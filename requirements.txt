@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-tensorflow
 pandas
 numpy
 requests
+tensorflow-cpu==2.12.0  # Hoặc phiên bản bạn đang dùng trên máy

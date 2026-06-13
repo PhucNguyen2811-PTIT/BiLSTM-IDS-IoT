@@ -22,7 +22,7 @@ def focal_loss(gamma=2.0, alpha=0.25):
     return loss_fn
 
 # 3. Load model
-model = tf.keras.models.load_model('bilstm_botiot.h5', custom_objects={'loss_fn': focal_loss()})
+model = tf.keras.models.load_model('bilstm_botiot.h5', compile=False)
 CLASS_NAMES = ['DDoS', 'DoS', 'Normal', 'Reconnaissance', 'Theft']
 
 @app.post("/predict")

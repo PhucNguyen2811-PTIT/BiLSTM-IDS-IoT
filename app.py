@@ -1,23 +1,26 @@
 import numpy as np
 import tensorflow as tf
 import time
-import os
 import smtplib
 from email.message import EmailMessage
 from tensorflow.keras.layers import Input, Dense, BatchNormalization, Dropout, Reshape, Bidirectional, LSTM
 from tensorflow.keras.models import Model
-from fastapi import FastAPI
+from fastapi import FastAPI, BackgroundTasks
 import uvicorn
+import os
+
+# Tối ưu RAM cho Render
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 app = FastAPI()
 
 # --- Cấu hình Email ---
-EMAIL_SENDER = "nguyenhoangphuc2811@gmail.com"
-EMAIL_PASSWORD = "tzma ifbt pvwt gdfw" 
-EMAIL_RECEIVER = "nguyenhoangphuc2811@gmail.com"
-last_alert_time = 0 # Biến để chống spam mail
+EMAIL_SENDER = "email_cua_ban@gmail.com"
+EMAIL_PASSWORD = "chuoi_16_ky_tu_app_password" 
+EMAIL_RECEIVER = "email_nhan_thong_bao@gmail.com"
+last_alert_time = 0 
 
-# --- Định nghĩa Min/Max chuẩn hóa ---
+# --- Định nghĩa Min/Max ---
 data_min = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 data_max = np.array([262212.0, 2.496762990951538, 100.0, 4.980471134185791, 11.0, 
                      4.981882095336914, 100.0, 58823.52734375, 383726.34375, 
@@ -39,21 +42,23 @@ def get_model():
 
 model = get_model()
 model.load_weights('bilstm_botiot.weights.h5')
-print("Model đã nạp trọng số thành công!")
 
-# --- Hàm gửi mail ---
+# --- Hàm gửi mail (Background) ---
 def send_alert_email(attack_type, confidence):
-    msg = EmailMessage()
-    msg['Subject'] = f"CẢNH BÁO: Phát hiện tấn công {attack_type}!"
-    msg['From'] = EMAIL_SENDER
-    msg['To'] = EMAIL_RECEIVER
-    msg.set_content(f"Hệ thống IDS phát hiện tấn công!\n\nLoại: {attack_type}\nĐộ tin cậy: {confidence:.2f}\nThời gian: {time.ctime()}")
-    with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-        smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        smtp.send_message(msg)
+    try:
+        msg = EmailMessage()
+        msg['Subject'] = f"CẢNH BÁO: Tấn công {attack_type}!"
+        msg['From'] = EMAIL_SENDER
+        msg['To'] = EMAIL_RECEIVER
+        msg.set_content(f"Phát hiện tấn công: {attack_type}\nConfidence: {confidence:.2f}")
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
+            smtp.send_message(msg)
+    except Exception as e:
+        print(f"Lỗi gửi mail: {e}")
 
 @app.post("/predict")
-async def predict(data: dict):
+async def predict(data: dict, background_tasks: BackgroundTasks):
     global last_alert_time
     start_model = time.perf_counter()
     
@@ -61,21 +66,18 @@ async def predict(data: dict):
     scaled_features = (features - data_min) / (data_max - data_min)
     
     prediction = model.predict(scaled_features, verbose=0)
-    prediction[0][2] = 0 # Ép Normal về 0
+    prediction[0][2] = 0 
     
     label_idx = np.argmax(prediction)
     MAPPED_NAMES = ['DDoS', 'DoS', 'Unknown', 'Reconnaissance', 'Theft']
     result = MAPPED_NAMES[label_idx]
     conf = float(np.max(prediction))
     
-    # Gửi mail nếu phát hiện tấn công và cách lần gửi trước > 300s
-    if result != 'Unknown' and conf > 0.0:
+    # Gửi mail không chặn response
+    if result != 'Unknown' and conf > 0.6:
         if (time.time() - last_alert_time) > 300:
-            try:
-                send_alert_email(result, conf)
-                last_alert_time = time.time()
-            except Exception as e:
-                print(f"Lỗi gửi mail: {e}")
+            background_tasks.add_task(send_alert_email, result, conf)
+            last_alert_time = time.time()
     
     latency_ms = (time.perf_counter() - start_model) * 1000
     return {"status": "attack", "type": result, "confidence": conf, "latency_ms": round(latency_ms, 2)}

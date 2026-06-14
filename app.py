@@ -71,7 +71,7 @@ async def predict(data: dict, background_tasks: BackgroundTasks):
     
     # Logic cảnh báo
     if result != 'Normal' and conf > 0.3:
-        if (time.time() - last_alert_time) > 300:
+        if (time.time() - last_alert_time) > 3:
             background_tasks.add_task(send_alert_email, result, conf)
             last_alert_time = time.time()
     

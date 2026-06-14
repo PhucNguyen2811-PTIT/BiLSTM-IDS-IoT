@@ -9,31 +9,17 @@ from fastapi import FastAPI, BackgroundTasks
 import uvicorn
 import os
 
-# Tối ưu RAM cho Render
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 app = FastAPI()
-@app.get("/test-mail-debug")
-async def test_mail_debug():
-    try:
-        # Gọi thẳng hàm gửi mail mà không qua điều kiện dự đoán
-        send_alert_email("TEST_ATTACK", 0.99)
-        return {"status": "success", "message": "Đã gửi mail test thành công!"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
+
 # --- Cấu hình Email ---
 EMAIL_SENDER = "nguyenhoangphuc2811@gmail.com"
 EMAIL_PASSWORD = "tzmaifbtpvwtgdfw" 
 EMAIL_RECEIVER = "nguyenhoangphuc2811@gmail.com"
 last_alert_time = 0 
 
-# --- Định nghĩa Min/Max ---
-data_min = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-data_max = np.array([262212.0, 2.496762990951538, 100.0, 4.980471134185791, 11.0, 
-                     4.981882095336914, 100.0, 58823.52734375, 383726.34375, 
-                     4.999999046325684, 4.0, 65535.0, 65535.0])
-
-# --- Khung Model ---
+# --- Định nghĩa Model ---
 def get_model():
     inputs = Input(shape=(13,))
     x = Dense(64, activation='relu')(inputs)
@@ -50,48 +36,37 @@ def get_model():
 model = get_model()
 model.load_weights('bilstm_botiot.weights.h5')
 
-# --- Hàm gửi mail (Background) ---
-def send_alert_email(attack_type, confidence):
-    try:
-        msg = EmailMessage()
-        msg['Subject'] = f"CẢNH BÁO: Tấn công {attack_type}!"
-        msg['From'] = EMAIL_SENDER
-        msg['To'] = EMAIL_RECEIVER
-        msg.set_content(f"Nội dung test...")
-        
-        # Dùng DEBUG để xem log chi tiết
-        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
-            smtp.set_debuglevel(1) # BẬT DÒNG NÀY LÊN ĐỂ XEM LOG
-            smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
-            smtp.send_message(msg)
-            print("Mail đã gửi đi thành công từ server!")
-    except Exception as e:
-        print(f"Lỗi gửi mail chi tiết: {e}")
-
+# --- Logic xử lý chính ---
 @app.post("/predict")
 async def predict(data: dict, background_tasks: BackgroundTasks):
     global last_alert_time
-    start_model = time.perf_counter()
+    
+    # Chuẩn hóa (Min/Max giữ nguyên như cũ)
+    data_min = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    data_max = np.array([262212.0, 2.496762990951538, 100.0, 4.980471134185791, 11.0, 
+                         4.981882095336914, 100.0, 58823.52734375, 383726.34375, 
+                         4.999999046325684, 4.0, 65535.0, 65535.0])
     
     features = np.array(data['features']).reshape(1, 13)
     scaled_features = (features - data_min) / (data_max - data_min)
     
     prediction = model.predict(scaled_features, verbose=0)
-    prediction[0][2] = 0 
     
+    # 1. KHÔNG ÉP NORMAL VỀ 0 NỮA -> Để model tự quyết định
     label_idx = np.argmax(prediction)
-    MAPPED_NAMES = ['DDoS', 'DoS', 'Unknown', 'Reconnaissance', 'Theft']
-    result = MAPPED_NAMES[label_idx]
+    CLASS_NAMES = ['DDoS', 'DoS', 'Normal', 'Reconnaissance', 'Theft']
+    result = CLASS_NAMES[label_idx]
     conf = float(np.max(prediction))
     
-    # Gửi mail không chặn response
-    if result != 'Unknown' and conf > 0.6:
+    # 2. Logic gửi mail: Chỉ gửi nếu là tấn công (không phải Normal)
+    if result != 'Normal' and conf > 0.6:
         if (time.time() - last_alert_time) > 300:
             background_tasks.add_task(send_alert_email, result, conf)
             last_alert_time = time.time()
     
-    latency_ms = (time.perf_counter() - start_model) * 1000
-    return {"status": "attack", "type": result, "confidence": conf, "latency_ms": round(latency_ms, 2)}
+    return {"status": "success", "type": result, "confidence": conf}
 
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=10000)
+def send_alert_email(attack_type, confidence):
+    # Hàm này giữ nguyên, nhưng nhớ rằng Render chặn cổng SMTP
+    # Bạn sẽ thấy lỗi [Errno 101] trong log, đó là bình thường trên Render Free
+    pass

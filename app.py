@@ -22,9 +22,9 @@ async def test_mail_debug():
     except Exception as e:
         return {"status": "error", "message": str(e)}
 # --- Cấu hình Email ---
-EMAIL_SENDER = "email_cua_ban@gmail.com"
-EMAIL_PASSWORD = "chuoi_16_ky_tu_app_password" 
-EMAIL_RECEIVER = "email_nhan_thong_bao@gmail.com"
+EMAIL_SENDER = "nguyenhoangphuc2811@gmail.com"
+EMAIL_PASSWORD = "tzmaifbtpvwtgdfw" 
+EMAIL_RECEIVER = "nguyenhoangphuc2811@gmail.com"
 last_alert_time = 0 
 
 # --- Định nghĩa Min/Max ---

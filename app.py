@@ -57,12 +57,16 @@ def send_alert_email(attack_type, confidence):
         msg['Subject'] = f"CẢNH BÁO: Tấn công {attack_type}!"
         msg['From'] = EMAIL_SENDER
         msg['To'] = EMAIL_RECEIVER
-        msg.set_content(f"Phát hiện tấn công: {attack_type}\nConfidence: {confidence:.2f}")
+        msg.set_content(f"Nội dung test...")
+        
+        # Dùng DEBUG để xem log chi tiết
         with smtplib.SMTP_SSL('smtp.gmail.com', 465) as smtp:
+            smtp.set_debuglevel(1) # BẬT DÒNG NÀY LÊN ĐỂ XEM LOG
             smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
             smtp.send_message(msg)
+            print("Mail đã gửi đi thành công từ server!")
     except Exception as e:
-        print(f"Lỗi gửi mail: {e}")
+        print(f"Lỗi gửi mail chi tiết: {e}")
 
 @app.post("/predict")
 async def predict(data: dict, background_tasks: BackgroundTasks):

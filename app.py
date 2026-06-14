@@ -69,7 +69,7 @@ async def predict(data: dict):
     conf = float(np.max(prediction))
     
     # Gửi mail nếu phát hiện tấn công và cách lần gửi trước > 300s
-    if result != 'Unknown' and conf > 0.6:
+    if result != 'Unknown' and conf > 0.0:
         if (time.time() - last_alert_time) > 300:
             try:
                 send_alert_email(result, conf)

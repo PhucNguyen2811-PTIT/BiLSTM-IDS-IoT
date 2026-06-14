@@ -43,12 +43,6 @@ def send_alert_email(attack_type, confidence):
     except Exception as e:
         print(f"Lỗi gửi Webhook: {e}")
 
-# --- Route Test cho bạn ---
-@app.get("/test-mail-debug")
-async def test_mail_debug(background_tasks: BackgroundTasks):
-    background_tasks.add_task(send_alert_email, "TEST_ATTACK", 0.99)
-    return {"status": "success", "message": "Đã kích hoạt gửi test qua Webhook!"}
-
 # --- Logic dự đoán chính ---
 @app.post("/predict")
 async def predict(data: dict, background_tasks: BackgroundTasks):

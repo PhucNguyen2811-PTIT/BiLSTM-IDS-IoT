@@ -1,23 +1,17 @@
 import numpy as np
 import tensorflow as tf
 import time
-import smtplib
-from email.message import EmailMessage
+import requests  # Thư viện để gửi Webhook
 from tensorflow.keras.layers import Input, Dense, BatchNormalization, Dropout, Reshape, Bidirectional, LSTM
 from tensorflow.keras.models import Model
 from fastapi import FastAPI, BackgroundTasks
 import uvicorn
 import os
 
+# Tối ưu RAM cho Render
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 app = FastAPI()
-
-# --- Cấu hình Email ---
-EMAIL_SENDER = "nguyenhoangphuc2811@gmail.com"
-EMAIL_PASSWORD = "tzmaifbtpvwtgdfw" 
-EMAIL_RECEIVER = "nguyenhoangphuc2811@gmail.com"
-last_alert_time = 0 
 
 # --- Định nghĩa Model ---
 def get_model():
@@ -36,12 +30,30 @@ def get_model():
 model = get_model()
 model.load_weights('bilstm_botiot.weights.h5')
 
-# --- Logic xử lý chính ---
+# Biến toàn cục để chống spam mail
+last_alert_time = 0 
+
+# --- Hàm gửi Webhook (Thay cho SMTP) ---
+def send_alert_email(attack_type, confidence):
+    webhook_url = "https://hook.eu1.make.com/soz31pnrhct1eulhdz7nd5bqx41wqgir"
+    payload = {"attack": attack_type, "conf": str(confidence)}
+    try:
+        response = requests.post(webhook_url, json=payload)
+        print(f"Webhook phản hồi: {response.status_code}")
+    except Exception as e:
+        print(f"Lỗi gửi Webhook: {e}")
+
+# --- Route Test cho bạn ---
+@app.get("/test-mail-debug")
+async def test_mail_debug(background_tasks: BackgroundTasks):
+    background_tasks.add_task(send_alert_email, "TEST_ATTACK", 0.99)
+    return {"status": "success", "message": "Đã kích hoạt gửi test qua Webhook!"}
+
+# --- Logic dự đoán chính ---
 @app.post("/predict")
 async def predict(data: dict, background_tasks: BackgroundTasks):
     global last_alert_time
     
-    # Chuẩn hóa (Min/Max giữ nguyên như cũ)
     data_min = np.array([1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     data_max = np.array([262212.0, 2.496762990951538, 100.0, 4.980471134185791, 11.0, 
                          4.981882095336914, 100.0, 58823.52734375, 383726.34375, 
@@ -52,21 +64,19 @@ async def predict(data: dict, background_tasks: BackgroundTasks):
     
     prediction = model.predict(scaled_features, verbose=0)
     
-    # 1. KHÔNG ÉP NORMAL VỀ 0 NỮA -> Để model tự quyết định
     label_idx = np.argmax(prediction)
     CLASS_NAMES = ['DDoS', 'DoS', 'Normal', 'Reconnaissance', 'Theft']
     result = CLASS_NAMES[label_idx]
     conf = float(np.max(prediction))
     
-    # 2. Logic gửi mail: Chỉ gửi nếu là tấn công (không phải Normal)
+    # Logic cảnh báo
     if result != 'Normal' and conf > 0.6:
         if (time.time() - last_alert_time) > 300:
             background_tasks.add_task(send_alert_email, result, conf)
             last_alert_time = time.time()
     
-    return {"status": "success", "type": result, "confidence": conf}
+    status = "safe" if result == "Normal" else "alert"
+    return {"status": status, "type": result, "confidence": conf}
 
-def send_alert_email(attack_type, confidence):
-    # Hàm này giữ nguyên, nhưng nhớ rằng Render chặn cổng SMTP
-    # Bạn sẽ thấy lỗi [Errno 101] trong log, đó là bình thường trên Render Free
-    pass
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=10000)

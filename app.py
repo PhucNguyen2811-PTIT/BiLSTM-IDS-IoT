@@ -13,7 +13,14 @@ import os
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 app = FastAPI()
-
+@app.get("/test-mail-debug")
+async def test_mail_debug():
+    try:
+        # Gọi thẳng hàm gửi mail mà không qua điều kiện dự đoán
+        send_alert_email("TEST_ATTACK", 0.99)
+        return {"status": "success", "message": "Đã gửi mail test thành công!"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 # --- Cấu hình Email ---
 EMAIL_SENDER = "email_cua_ban@gmail.com"
 EMAIL_PASSWORD = "chuoi_16_ky_tu_app_password" 
